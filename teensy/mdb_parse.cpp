@@ -29,7 +29,7 @@ static Print* l;
 #define LOG(str) (l->println(PARSE_LOG str))
 #define LOGF(str,...) (l->printf(PARSE_LOG str, __VA_ARGS__))
 
-#define VERBOSE_LOGGING 1
+//#define VERBOSE_LOGGING 1
 
 #ifdef VERBOSE_LOGGING
     #define SPAM(str) (l->println(PARSE_LOG str))
@@ -233,16 +233,24 @@ bool mdb_execute_handler()
         last_byte = tx_buffer[0] != MDB_NCK ? MDB_ACK : MDB_NCK;
     }
 
+#ifdef VERBOSE_LOGGING
     l->print(">>>>>>>>     ");
+#endif
+
     for (int i = 0; i < len; ++i)
     {
+#ifdef VERBOSE_LOGGING
         l->printf(" %02X", tx_buffer[i]);
+#endif
         tx_callback(tx_buffer[i]);
     }
 
+#ifdef VERBOSE_LOGGING
     l->printf(" %04X", MDB_MODE_BIT | last_byte);
-    tx_callback(MDB_MODE_BIT | last_byte);
     l->println("");
+#endif
+
+    tx_callback(MDB_MODE_BIT | last_byte);
 
     return true;
 }

@@ -6,6 +6,17 @@
 #include "mdb_parse.h"
 #include "mdb_cashless.h"
 
+static const char* state_labels[] =
+{
+    "INACTIVE",
+    "DISABLED",
+    "ENABLED",
+    "IDLE",
+    "VEND",
+    "REVALUE",
+    "NEGVEND",
+};
+
 const int led_pin = 13;
 
 HardwareSerial *peripheral = &Serial3;
@@ -29,7 +40,6 @@ void setup()
     host->begin(115200);
     sniff->begin(9600, SERIAL_9N1);
     peripheral->begin(9600, SERIAL_9N1_RXINV_TXINV);
-    //peripheral->begin(9600, SERIAL_9N1);
 
     mdb_parser_init(&tx, host);
     mdb_cashless_init(host);
@@ -99,12 +109,17 @@ void loop()
 
     }
 
-	if (count % 2500 == 0) {
-            mdb_cashless_funds_available(150);
-			toSend++;
+	if (count == 5000) {
+		mdb_cashless_funds_available(150);
 	}
-	count++;
 
+	//if (count % 1000 == 0) {
+	//	int state = mdb_cashless_get_current_state();
+	//	host->print("Current state: ");
+	//	host->println(state_labels[state]);
+	//}
+
+	count++;
 	delay(1);
 
 //    if (sniff->available() > 0)

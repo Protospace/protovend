@@ -28,9 +28,11 @@ static Print* l;
 #define LOG(str) (l->println(CASHLESS_LOG str))
 #define LOGF(str,...) (l->printf(CASHLESS_LOG str, __VA_ARGS__))
 
+//#define VERBOSE_LOGGING 1
+
 #ifdef VERBOSE_LOGGING
-    #define SPAM(str) (l->println(PARSE_LOG str))
-    #define SPAMF(str,...) (l->printf(PARSE_LOG str, __VA_ARGS__))
+    #define SPAM(str) (l->println(CASHLESS_LOG str))
+    #define SPAMF(str,...) (l->printf(CASHLESS_LOG str, __VA_ARGS__))
 #else
     #define SPAM(str)
     #define SPAMF(str,...)
@@ -71,7 +73,7 @@ static uint16_t last_price = 0;
 void mdb_cashless_funds_available(uint16_t funds)
 {
     available_funds = funds;
-    reset_session = true;
+    //reset_session = true;
 }
 
 uint8_t mdb_cashless_get_current_state()
@@ -130,24 +132,32 @@ static uint8_t set_state(uint8_t new_state)
 
 uint8_t test(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function test");
+
     tx[0] = MDB_NCK;
     return 0;
 }
 
 uint8_t mdb_cashless_ackonly(uint8_t* tx)
 {
+	SPAM("Function ackonly");
+
     tx[0] = MDB_ACK;
     return 0;
 }
 
 uint8_t mdb_cashless_out_of_sequence(uint8_t* tx)
 {
+	LOG("Function out of sequence");
+
     tx[0] = MDB_RESPONSE_OUTOFSEQ;
     return 1;
 }
 
 uint8_t mdb_cashless_reset(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function reset");
+
     LOG("Reset\n");
     set_state(MDB_CASHLESS_STATE_INACTIVE);
     has_config = false;
@@ -158,6 +168,8 @@ uint8_t mdb_cashless_reset(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_setup_config(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function setup config");
+
     has_config = true;
 
     set_state(has_prices ? MDB_CASHLESS_STATE_DISABLED : MDB_CASHLESS_STATE_INACTIVE);
@@ -182,6 +194,8 @@ uint8_t mdb_cashless_setup_config(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_setup_prices(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function setup prices");
+
     has_prices = true;
 
     LOG("OH MY GAWD I HAVE PRICE DATA\n");
@@ -197,12 +211,18 @@ uint8_t mdb_cashless_setup_prices(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_poll_handler(uint8_t* rx, uint8_t* tx)
 {
-    SPAM("Poll!");
+    SPAM("Function poll handler");
     uint8_t len = 0;
     if(cashless_state == MDB_CASHLESS_STATE_INACTIVE)
     {
         LOG("Poll: sending JUST RESET");
         tx[0] = MDB_RESPONSE_JUSTRESET;
+        len = 1;
+    }
+    else if(cashless_state == MDB_CASHLESS_STATE_IDLE && reset_session)
+    {
+        LOG("Requesting session end.");
+        tx[0] = MDB_RESPONSE_CANCELSESSION;
         len = 1;
     }
     else if(cashless_state == MDB_CASHLESS_STATE_ENABLED && available_funds > 0)
@@ -215,12 +235,8 @@ uint8_t mdb_cashless_poll_handler(uint8_t* rx, uint8_t* tx)
 		tx[2] = available_funds & 0xFF;
 	
         len = 3;
-    }
-    else if(cashless_state == MDB_CASHLESS_STATE_IDLE && reset_session)
-    {
-        LOG("Requesting session end.");
-        tx[0] = MDB_RESPONSE_CANCELSESSION;
-        len = 1;
+
+        set_state(MDB_CASHLESS_STATE_IDLE);
     }
     else
     {
@@ -232,6 +248,8 @@ uint8_t mdb_cashless_poll_handler(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_reader_disable(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function reader disable");
+
     if(cashless_state != MDB_CASHLESS_STATE_VEND)
     {
         LOG("Disabling reader.");
@@ -248,6 +266,8 @@ uint8_t mdb_cashless_reader_disable(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_reader_enable(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function reader enable");
+
     uint8_t len = 0;
     if(cashless_state == MDB_CASHLESS_STATE_DISABLED && has_config && has_prices)
     {
@@ -268,6 +288,8 @@ uint8_t mdb_cashless_reader_enable(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_reader_cancel(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function reader cancel");
+
     uint8_t len = 0;
     if(cashless_state == MDB_CASHLESS_STATE_ENABLED)
     {
@@ -285,6 +307,8 @@ uint8_t mdb_cashless_reader_cancel(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_vend_request(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function vend request");
+
     uint8_t len = 0;
     if(cashless_state != MDB_CASHLESS_STATE_IDLE)
     {
@@ -311,6 +335,8 @@ uint8_t mdb_cashless_vend_request(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_vend_success(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function vend success");
+
     uint16_t item_number = 0;
     memcpy(&item_number, tx + 2, sizeof(uint16_t));
 	LOGF("Vend success: item number %04X\n", item_number);
@@ -321,10 +347,10 @@ uint8_t mdb_cashless_vend_success(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_session_complete(uint8_t* rx, uint8_t* tx)
 {
-    LOG("End of vend session.");
+    LOG("Function session complete");
     set_state(disable_after_vend ? MDB_CASHLESS_STATE_DISABLED : MDB_CASHLESS_STATE_ENABLED);
     disable_after_vend = false;
-    reset_session = false;
+    //reset_session = true;
 
     tx[0] = MDB_RESPONSE_ENDSESSION;
     return 1;
@@ -332,6 +358,7 @@ uint8_t mdb_cashless_session_complete(uint8_t* rx, uint8_t* tx)
 
 uint8_t mdb_cashless_request_id(uint8_t* rx, uint8_t* tx)
 {
+	LOG("Function request id");
     char manufacturer[] = "WTF";
     char serial[] = "10 digits?";
     char model[] =  "SparkVend!!1";
