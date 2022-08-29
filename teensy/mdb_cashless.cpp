@@ -309,13 +309,20 @@ uint8_t mdb_cashless_vend_request(uint8_t* rx, uint8_t* tx)
 {
 	LOG("Function vend request");
 
+    uint16_t item_price = 0;
+    uint16_t item_number = 0;
+    memcpy(&item_price, rx + 2, sizeof(uint16_t));
+    memcpy(&item_number, rx + 4, sizeof(uint16_t));
+
+	LOGF("Vend request: item price: %d, price: %04X\n", item_price, item_number);
+
     uint8_t len = 0;
     if(cashless_state != MDB_CASHLESS_STATE_IDLE)
     {
         LOG("VEND: out of sequence.");
         len = mdb_cashless_out_of_sequence(tx);
     }
-    else if(1)
+    else if(0)
     {
         LOG("VEND OK!");
         tx[0] = MDB_RESPONSE_VENDOK;
