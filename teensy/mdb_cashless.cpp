@@ -311,8 +311,9 @@ uint8_t mdb_cashless_vend_request(uint8_t* rx, uint8_t* tx)
 
     uint16_t item_price = 0;
     uint16_t item_number = 0;
-    memcpy(&item_price, rx + 2, sizeof(uint16_t));
-    memcpy(&item_number, rx + 4, sizeof(uint16_t));
+
+	item_price = (rx[2] << 8) + rx[3];
+	item_number = (rx[4] << 8) + rx[5];
 
 	LOGF("Vend request: item price: %d, price: %04X\n", item_price, item_number);
 
