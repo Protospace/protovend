@@ -6,6 +6,8 @@
 #include "mdb_parse.h"
 #include "mdb_cashless.h"
 
+uint8_t state = 0x0;
+
 static const char* state_labels[] =
 {
     "INACTIVE",
@@ -13,8 +15,8 @@ static const char* state_labels[] =
     "ENABLED",
     "IDLE",
     "VEND",
-    "REVALUE",
-    "NEGVEND",
+    "REVALUE", //Level 2/3 Device Only
+    "NEGVEND", //Level 3 Device Only
 };
 
 const int led_pin = 13;
@@ -114,8 +116,10 @@ void loop()
 	}
 
 	if (last_item) {
+    delay(100);
 		last_item = 0;
 		vend_approved = true;
+    mdb_vend_approval(last_item, last_price);
 	}
 
 	//if (count % 1000 == 0) {
