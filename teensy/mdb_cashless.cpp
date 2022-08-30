@@ -67,8 +67,9 @@ static const char* state_labels[] =
 
 static uint16_t available_funds = 0;
 static uint8_t vend_count = 0;
-static uint16_t last_item = 0;
-static uint16_t last_price = 0;
+uint16_t last_item = 0;
+uint16_t last_price = 0;
+bool vend_approved = false;
 
 void mdb_cashless_funds_available(uint16_t funds)
 {
@@ -238,6 +239,16 @@ uint8_t mdb_cashless_poll_handler(uint8_t* rx, uint8_t* tx)
 
         set_state(MDB_CASHLESS_STATE_IDLE);
     }
+    else if(cashless_state == MDB_CASHLESS_STATE_IDLE && vend_approved)
+    {
+		vend_approved = false;
+
+        LOG("VEND OK!");
+        tx[0] = MDB_RESPONSE_VENDOK;
+        tx[1] = 0xFF;
+        tx[2] = 0xFF;
+        len = 3;
+    }
     else
     {
         len = mdb_cashless_ackonly(tx);
@@ -309,13 +320,10 @@ uint8_t mdb_cashless_vend_request(uint8_t* rx, uint8_t* tx)
 {
 	LOG("Function vend request");
 
-    uint16_t item_price = 0;
-    uint16_t item_number = 0;
+	last_price = (rx[2] << 8) + rx[3];
+	last_item = (rx[4] << 8) + rx[5];
 
-	item_price = (rx[2] << 8) + rx[3];
-	item_number = (rx[4] << 8) + rx[5];
-
-	LOGF("Vend request: item price: %d, price: %04X\n", item_price, item_number);
+	LOGF("Vend request: item price: %d, number: %04X\n", last_price, last_item);
 
     uint8_t len = 0;
     if(cashless_state != MDB_CASHLESS_STATE_IDLE)
@@ -323,21 +331,26 @@ uint8_t mdb_cashless_vend_request(uint8_t* rx, uint8_t* tx)
         LOG("VEND: out of sequence.");
         len = mdb_cashless_out_of_sequence(tx);
     }
-    else if(0)
-    {
-        LOG("VEND OK!");
-        tx[0] = MDB_RESPONSE_VENDOK;
-        tx[1] = 0xFF;
-        tx[2] = 0xFF;
-        len = 3;
-    }
-    else
-    {
-        LOG("VEND denied.");
-        tx[0] = MDB_RESPONSE_VENDDENIED;
-        len = 1;
-    }
-    
+	else
+	{
+		len = mdb_cashless_ackonly(tx);
+	}
+
+    //else if(0)
+    //{
+    //    LOG("VEND OK!");
+    //    tx[0] = MDB_RESPONSE_VENDOK;
+    //    tx[1] = 0xFF;
+    //    tx[2] = 0xFF;
+    //    len = 3;
+    //}
+    //else
+    //{
+    //    LOG("VEND denied.");
+    //    tx[0] = MDB_RESPONSE_VENDDENIED;
+    //    len = 1;
+    //}
+
     return len;
 }
 

@@ -110,6 +110,10 @@ struct mdb_cashless_config_response
  */
 void mdb_cashless_funds_available(uint16_t funds);
 
+extern uint16_t last_item;
+extern uint16_t last_price;
+extern bool vend_approved;
+
 uint8_t mdb_cashless_get_current_state();
 uint8_t mdb_cashless_get_vend_count();
 uint16_t mdb_cashless_get_current_funds();

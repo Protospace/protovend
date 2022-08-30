@@ -113,6 +113,11 @@ void loop()
 		mdb_cashless_funds_available(150);
 	}
 
+	if (last_item) {
+		last_item = 0;
+		vend_approved = true;
+	}
+
 	//if (count % 1000 == 0) {
 	//	int state = mdb_cashless_get_current_state();
 	//	host->print("Current state: ");
