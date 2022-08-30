@@ -51,7 +51,7 @@ static struct mdb_cashless_config_response my_config = {
     1,      // Scale factor
     0,      // Decimal places
     10,     // Max response time (s)
-    0b00000110    // L1 option bits: multivend capable, has display.
+    0b00000010    // L1 option bits: multivend capable, has display.
 };
 
 static const char* state_labels[] =
@@ -59,7 +59,7 @@ static const char* state_labels[] =
     "INACTIVE",
     "DISABLED",
     "ENABLED",
-    "IDLE",
+    "SESSION IDLE",
     "VEND",
     "REVALUE",
     "NEGVEND",
@@ -214,11 +214,53 @@ uint8_t mdb_cashless_poll_handler(uint8_t* rx, uint8_t* tx)
 {
     SPAM("Function poll handler");
     uint8_t len = 0;
-    if(cashless_state == MDB_CASHLESS_STATE_INACTIVE)
-    {
+    
+    switch (cashless_state){
+      case MDB_CASHLESS_STATE_INACTIVE:
         LOG("Poll: sending JUST RESET");
         tx[0] = MDB_RESPONSE_JUSTRESET;
         len = 1;
+        break;
+      case MDB_CASHLESS_STATE_ENABLED:
+        if(available_funds > 0){
+          LOG("Starting new session.");
+          tx[0] = MDB_RESPONSE_NEWSESSION;
+          tx[1] = available_funds >> 8;
+          tx[2] = available_funds & 0xFF;
+          len = 3;
+          set_state(MDB_CASHLESS_STATE_IDLE);
+        }
+         break;
+       case MDB_CASHLESS_STATE_IDLE:
+        if(reset_session){
+          LOG("Requesting session end.");
+          tx[0] = MDB_RESPONSE_CANCELSESSION;
+          len = 1;
+          available_funds = 0;
+          set_state(MDB_CASHLESS_STATE_ENABLED);
+        }
+        break;
+       case MDB_CASHLESS_STATE_VEND:
+         available_funds = 0;
+         LOG("VEND OK!");
+         tx[0] = MDB_RESPONSE_VENDOK;
+         tx[1] = 0xFF;
+         tx[2] = 0xFF;
+         len = 3; 
+         vend_approved = false;           
+         set_state(MDB_CASHLESS_STATE_INACTIVE);
+        break;
+      
+      default:
+        len = mdb_cashless_ackonly(tx);
+    }
+
+    //This grossness is commented out and replaced with the state machine above
+   /* if(cashless_state == MDB_CASHLESS_STATE_INACTIVE)
+    {
+        LOG("Poll: sending JUST RESET");
+        tx[0] = MDB_RESPONSE_JUSTRESET;
+        len = 1; 
     }
     else if(cashless_state == MDB_CASHLESS_STATE_IDLE && reset_session)
     {
@@ -252,7 +294,7 @@ uint8_t mdb_cashless_poll_handler(uint8_t* rx, uint8_t* tx)
     else
     {
         len = mdb_cashless_ackonly(tx);
-    }
+    }*/
 
     return len;
 }
@@ -405,6 +447,18 @@ uint8_t mdb_cashless_request_id(uint8_t* rx, uint8_t* tx)
     return 0;
 }
 
+/***************
+ * 
+ * This is a placeholder function to deal with the vend authentication from spaceport
+ * 
+ */
+
+uint16_t mdb_vend_approval(uint16_t item, uint16_t price){
+  if (vend_approved = true)
+    set_state(MDB_CASHLESS_STATE_VEND);
+
+   return 0;
+}
 void mdb_cashless_init(Print* log_target)
 {
     l = log_target;

@@ -119,5 +119,6 @@ uint8_t mdb_cashless_get_vend_count();
 uint16_t mdb_cashless_get_current_funds();
 uint16_t mdb_cashless_get_last_item();
 uint16_t mdb_cashless_get_last_price();
+uint16_t mdb_vend_approval(uint16_t item, uint16_t price);
 
 #endif
