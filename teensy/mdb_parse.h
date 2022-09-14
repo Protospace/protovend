@@ -26,7 +26,7 @@
 #include <Print.h>
 
 // Fills an output buffer, returns the length of it. Checksum is added after. Only use the low 8 bits of each word in the buffer. 
-typedef uint8_t (*mdb_command_handler)(uint8_t* buffer, uint8_t* out);
+typedef uint8_t (*mdb_command_handler)(uint8_t* buffer, uint8_t* out, uint8_t cmd, uint8_t subcmd);
 
 typedef size_t (*transmit_callback)(uint16_t data);
 

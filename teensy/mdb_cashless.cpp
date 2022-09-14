@@ -67,9 +67,9 @@ static const char* state_labels[] =
 
 static uint16_t available_funds = 0;
 static uint8_t vend_count = 0;
-uint16_t last_item = 0;
-uint16_t last_price = 0;
-bool vend_approved = false;
+static uint16_t last_item = 0;
+static uint16_t last_price = 0;
+static bool vend_approved = false;
 
 void mdb_cashless_funds_available(uint16_t funds)
 {
@@ -447,11 +447,6 @@ uint8_t mdb_cashless_request_id(uint8_t* rx, uint8_t* tx)
     return 0;
 }
 
-/***************
- * 
- * This is a placeholder function to deal with the vend authentication from spaceport
- * 
- */
 
 uint16_t mdb_vend_approval(uint16_t item, uint16_t price){
   if (vend_approved = true)
@@ -459,22 +454,39 @@ uint16_t mdb_vend_approval(uint16_t item, uint16_t price){
 
    return 0;
 }
-void mdb_cashless_init(Print* log_target)
+
+
+void mdb_cashless_init(Print* log_target, mdb_command_handler mdb_cashless_handler)
 {
     l = log_target;
 
-    mdb_register_handler(MDB_CMD_RESET, MDB_NOSUBCMD, 1, &mdb_cashless_reset);
-    mdb_register_handler(MDB_CMD_POLL, MDB_NOSUBCMD, 1, &mdb_cashless_poll_handler);
-    mdb_register_handler(MDB_CMD_SETUP, MDB_CMD_SETUP_CONFIG, 6, &mdb_cashless_setup_config);
-    mdb_register_handler(MDB_CMD_SETUP, MDB_CMD_SETUP_PRICES, 6, &mdb_cashless_setup_prices);
-    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_REQUEST, 6, &mdb_cashless_vend_request);
-    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_CANCEL, 2, &test);
-    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_SUCCESS, 4, &mdb_cashless_vend_success);
-    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_FAILURE, 2, &test);
-    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_SESSION_COMPLETE, 2, &mdb_cashless_session_complete);
-    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_CASH_SALE, 6, &test);
-    mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_DISABLE, 2, &mdb_cashless_reader_disable);
-    mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_ENABLE, 2, &mdb_cashless_reader_enable);
-    mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_CANCEL, 2, &mdb_cashless_reader_cancel);
-    mdb_register_handler(MDB_CMD_EXT, MDB_CMD_EXT_REQUEST_ID, 31, &mdb_cashless_request_id);
+    //mdb_register_handler(MDB_CMD_RESET, MDB_NOSUBCMD, 1, &mdb_cashless_reset);
+    //mdb_register_handler(MDB_CMD_POLL, MDB_NOSUBCMD, 1, &mdb_cashless_poll_handler);
+    //mdb_register_handler(MDB_CMD_SETUP, MDB_CMD_SETUP_CONFIG, 6, &mdb_cashless_setup_config);
+    //mdb_register_handler(MDB_CMD_SETUP, MDB_CMD_SETUP_PRICES, 6, &mdb_cashless_setup_prices);
+    //mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_REQUEST, 6, &mdb_cashless_vend_request);
+    //mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_CANCEL, 2, &test);
+    //mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_SUCCESS, 4, &mdb_cashless_vend_success);
+    //mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_FAILURE, 2, &test);
+    //mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_SESSION_COMPLETE, 2, &mdb_cashless_session_complete);
+    //mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_CASH_SALE, 6, &test);
+    //mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_DISABLE, 2, &mdb_cashless_reader_disable);
+    //mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_ENABLE, 2, &mdb_cashless_reader_enable);
+    //mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_CANCEL, 2, &mdb_cashless_reader_cancel);
+    //mdb_register_handler(MDB_CMD_EXT, MDB_CMD_EXT_REQUEST_ID, 31, &mdb_cashless_request_id);
+
+    mdb_register_handler(MDB_CMD_RESET, MDB_NOSUBCMD, 1, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_POLL, MDB_NOSUBCMD, 1, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_SETUP, MDB_CMD_SETUP_CONFIG, 6, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_SETUP, MDB_CMD_SETUP_PRICES, 6, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_REQUEST, 6, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_CANCEL, 2, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_SUCCESS, 4, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_FAILURE, 2, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_SESSION_COMPLETE, 2, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_VEND, MDB_CMD_VEND_CASH_SALE, 6, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_DISABLE, 2, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_ENABLE, 2, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_CANCEL, 2, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_EXT, MDB_CMD_EXT_REQUEST_ID, 31, mdb_cashless_handler);
 }

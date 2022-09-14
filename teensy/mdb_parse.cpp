@@ -222,7 +222,7 @@ bool mdb_execute_handler()
     }
 
     SPAMF("Executing handler for %02X:%02X\n", def->cmd, def->subcmd);
-    uint8_t len = def->handler(rx_buffer, tx_buffer);
+    uint8_t len = def->handler(rx_buffer, tx_buffer, def->cmd, def->subcmd);
 
     if (len > 0)
     {

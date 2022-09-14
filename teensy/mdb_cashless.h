@@ -24,6 +24,7 @@
 #include <Print.h>
 
 #include "mdb_defs.h"
+#include "mdb_parse.h"
 
 /**
  * Cashless device commands
@@ -81,7 +82,7 @@
 #define MDB_CASHLESS_STATE_REVALUE     0x05
 #define MDB_CASHLESS_STATE_NEGVEND     0x06
 
-void mdb_cashless_init(Print* log_target);
+void mdb_cashless_init(Print* log_target, mdb_command_handler mdb_cashless_handler);
 
 #pragma pack(1)
 struct mdb_cashless_config_cmd
@@ -110,8 +111,6 @@ struct mdb_cashless_config_response
  */
 void mdb_cashless_funds_available(uint16_t funds);
 
-extern uint16_t last_item;
-extern uint16_t last_price;
 extern bool vend_approved;
 
 uint8_t mdb_cashless_get_current_state();
