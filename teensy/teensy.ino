@@ -21,8 +21,9 @@ enum cashlessStates {
 	SEND_CANCELSESSION,
 	SEND_ENDSESSION,
 	VEND,
-	REVALUE,
+	//REVALUE,      // level 2
 	SEND_ERROR,
+	SEND_OUTOFSEQ,
 };
 
 static const char* cashlessStateLabels[] =
@@ -34,8 +35,9 @@ static const char* cashlessStateLabels[] =
 	"SEND_CANCELSESSION",
 	"SEND_ENDSESSION",
 	"VEND",
-	"REVALUE",
+	//"REVALUE",    // level 2
 	"SEND_ERROR",
+	"SEND_OUTOFSEQ",
 };
 
 enum controllerStates {
@@ -51,7 +53,7 @@ static struct mdb_cashless_config_response my_config = {
 	1,      // Scale factor
 	0,      // Decimal places
 	10,     // Max response time (s)
-	0b00001010
+	0b00000000  // not sure if this does anything. wrong endianess?
 	//    ||||
 	//    |||supports cash sale?
 	//    ||has display
@@ -154,6 +156,28 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				cashlessState = INACTIVE;
 				break;
 			}
+			//else if (cmd == MDB_CMD_EXT && subcmd == MDB_CMD_EXT_REQUEST_ID) {
+			//	host->println("Cashless: Request ID");
+
+			//	char manufacturer[] = "WTF";
+			//	char serial[] = "10 digits?";
+			//	char model[] =  "SparkVend!!1";
+			//	uint16_t version = 0x0001;
+
+			//	tx[0] = MDB_RESPONSE_PERIPHERALID;
+			//	memcpy(tx +  1, manufacturer,  3);
+			//	memcpy(tx +  4, serial      , 10);
+			//	memcpy(tx + 14, model       , 12);
+			//	memcpy(tx + 28, &version    ,  2);
+
+			//	memcpy(manufacturer, rx +  2,  3);
+			//	memcpy(serial      , rx +  5, 10);
+			//	memcpy(model       , rx + 15, 12);
+			//	memcpy(&version    , rx + 29,  2);
+			//	len = 30;
+
+			//	break;
+			//}
 			else if (cmd == MDB_CMD_POLL) {
 				tx[0] = MDB_ACK;
 				len = 0;
@@ -234,6 +258,12 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				cashlessState = DISABLED;
 				break;
 			}
+			//else if (cmd == MDB_CMD_REVALUE) {
+			//	host->println("Cashless: Revalue request");
+			//	tx[0] = MDB_RESPONSE_REVALUEDENY;
+			//	len = 1;
+			//	break;
+			//}
 			else if (cmd == MDB_CMD_READER && subcmd == MDB_CMD_READER_CANCEL) {
 				host->println("Cashless: Reader cancel");
 				tx[0] = MDB_ACK;
@@ -315,7 +345,7 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 
 		case VEND:
 			if (cmd == MDB_CMD_VEND && subcmd == MDB_CMD_VEND_SUCCESS) {
-				last_item = (rx[0] << 8) + rx[1];
+				last_item = (rx[2] << 8) + rx[3];
 				host->printf("Cashless: Vend success. number: %04X\n", last_item);
 				tx[0] = MDB_ACK;
 				len = 0;
@@ -345,8 +375,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 
 					host->println("Cashless: Vend OK");
 					tx[0] = MDB_RESPONSE_VENDOK;
-					tx[1] = 0xFF;
-					tx[2] = 0xFF;
+					tx[1] = last_price >> 8;
+					tx[2] = last_price & 0xFF;
 					len = 3;
 					break;
 				}
@@ -378,8 +408,44 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 
 				break;
 			}
+			else if (cmd == MDB_CMD_RESET) {
+				host->println("Cashless: Resetting reader");
+				tx[0] = MDB_ACK;
+				len = 0;
+
+				has_config = false;
+				has_prices = false;
+				available_funds = 0;
+
+				cashlessState = INACTIVE;
+				break;
+			}
 
 			host->println("Cashless: Unexpected command in state SEND_ERROR");
+			break;
+
+		case SEND_OUTOFSEQ:
+			if (cmd == MDB_CMD_POLL) {
+				host->println("Cashless: out of sequence");
+				tx[0] = MDB_RESPONSE_OUTOFSEQ;
+				len = 1;
+
+				break;
+			}
+			else if (cmd == MDB_CMD_RESET) {
+				host->println("Cashless: Resetting reader");
+				tx[0] = MDB_ACK;
+				len = 0;
+
+				has_config = false;
+				has_prices = false;
+				available_funds = 0;
+
+				cashlessState = INACTIVE;
+				break;
+			}
+
+			host->println("Cashless: Unexpected command in state SEND_OUTOFSEQ");
 			break;
 	}
 
@@ -397,7 +463,7 @@ void setup()
     pinMode(led_pin, OUTPUT);
 
     host->begin(115200);
-    host->setTimeout(1000);
+    host->setTimeout(250);
     sniff->begin(9600, SERIAL_9N1);
     peripheral->begin(9600, SERIAL_9N1_RXINV_TXINV);
 
@@ -489,6 +555,18 @@ void loop()
 		else if (data == "reset") {
 			host->println("resetting vend");
 			cashlessState = SEND_ENDSESSION;
+		}
+		else if (data == "error") {
+			host->println("sending error");
+			cashlessState = SEND_ERROR;
+		}
+		else if (data == "oos") {
+			host->println("sending out of sequence");
+			cashlessState = SEND_OUTOFSEQ;
+		}
+		else if (data == "cancel") {
+			host->println("sending cancel session request");
+			cashlessState = SEND_CANCELSESSION;
 		}
 		else if (cents) {
 			host->print("Cents: ");

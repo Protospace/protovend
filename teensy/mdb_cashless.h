@@ -71,6 +71,9 @@
 #define MDB_RESPONSE_ERROR          0x0A
 #define MDB_RESPONSE_OUTOFSEQ       0x0B
 
+#define MDB_RESPONSE_REVALUEOK      0x0D
+#define MDB_RESPONSE_REVALUEDENY    0x0E
+
 /**
  * Cashless State Machine
  */

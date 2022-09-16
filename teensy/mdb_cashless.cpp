@@ -488,5 +488,6 @@ void mdb_cashless_init(Print* log_target, mdb_command_handler mdb_cashless_handl
     mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_DISABLE, 2, mdb_cashless_handler);
     mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_ENABLE, 2, mdb_cashless_handler);
     mdb_register_handler(MDB_CMD_READER, MDB_CMD_READER_CANCEL, 2, mdb_cashless_handler);
+    mdb_register_handler(MDB_CMD_REVALUE, MDB_NOSUBCMD, 2, mdb_cashless_handler);
     mdb_register_handler(MDB_CMD_EXT, MDB_CMD_EXT_REQUEST_ID, 31, mdb_cashless_handler);
 }
