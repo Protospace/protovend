@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <NativeEthernet.h>
 #include <ArduinoHttpClient.h>
+#include <ArduinoJson.h>
 
 #include "mdb_defs.h"
 #include "mdb_parse.h"
@@ -56,12 +57,11 @@ enum controllerStates {
 	BEGIN,
 	DELAY_CONNECT,
 	CONNECT,
-	CONNECTING,
 	HEARTBEAT,
-	HEARTBEAT_WAIT,
-	HEARTBEAT_SUCCESS,
 	WAIT_FOR_SCAN,
 	GET_BALANCE,
+	WAIT_FOR_VEND,
+	VEND_REQUEST,
 };
 
 static const char* controllerStateLabels[] =
@@ -134,6 +134,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				has_config = false;
 				has_prices = false;
 				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
 
 				cashlessState = INACTIVE;
 				break;
@@ -164,6 +166,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				has_config = false;
 				has_prices = false;
 				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
 
 				cashlessState = INACTIVE;
 				break;
@@ -176,6 +180,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				has_config = false;
 				has_prices = false;
 				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
 
 				cashlessState = INACTIVE;
 				break;
@@ -228,6 +234,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				has_config = false;
 				has_prices = false;
 				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
 
 				cashlessState = INACTIVE;
 				break;
@@ -240,6 +248,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				has_config = false;
 				has_prices = false;
 				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
 
 				cashlessState = INACTIVE;
 				break;
@@ -270,6 +280,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				has_config = false;
 				has_prices = false;
 				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
 
 				cashlessState = INACTIVE;
 				break;
@@ -296,6 +308,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				has_config = false;
 				has_prices = false;
 				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
 
 				cashlessState = INACTIVE;
 				break;
@@ -306,6 +320,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				len = 0;
 
 				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
 
 				cashlessState = SEND_ENDSESSION;
 				break;
@@ -457,6 +473,8 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				has_config = false;
 				has_prices = false;
 				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
 
 				cashlessState = INACTIVE;
 				break;
@@ -476,6 +494,10 @@ void processControllerState() {
 	static unsigned long timer = millis();
 	static int statusCode;
 
+	static StaticJsonDocument<1024> jsonDoc;
+
+	static float balance;
+	static String first_name;
 
 	switch (controllerState) {
 		case BEGIN:
@@ -493,7 +515,7 @@ void processControllerState() {
 			break;
 
 		case DELAY_CONNECT:
-			if (millis() > timer + 5000) {
+			if (millis() > timer + 2000) {
 				controllerState = CONNECT;
 			}
 
@@ -527,6 +549,7 @@ void processControllerState() {
 				String response = client.responseBody();
 				//host->println(response);
 				controllerState = WAIT_FOR_SCAN;
+				cashlessState = INACTIVE;
 			} else {
 				host->println("Controller: connection failed");
 				controllerState = BEGIN;
@@ -551,11 +574,77 @@ void processControllerState() {
 				host->println("Controller: get balance succeeded");
 				String response = client.responseBody();
 				host->println(response);
-				controllerState = WAIT_FOR_SCAN;
+
+				deserializeJson(jsonDoc, response);
+				balance = jsonDoc["balance"];
+				first_name = jsonDoc["first_name"].as<String>();
+
+				host->print("Controller: set balance: ");
+				host->print(balance);
+				host->print(" first_name: ");
+				host->println(first_name);
+
+				available_funds = (uint16_t) (balance * 100);
+
+				host->print("Available funds: ");
+				host->println(available_funds);
+
+				controllerState = WAIT_FOR_VEND;
 			} else {
 				host->println("Controller: get balance failed");
 				controllerState = BEGIN;
 			}
+
+			break;
+
+		case WAIT_FOR_VEND:
+			if (last_price && last_item) {
+				if (last_price > available_funds) {
+					allowed_vend = VEND_BAD;
+					controllerState = WAIT_FOR_SCAN;
+				} else {
+					controllerState = VEND_REQUEST;
+				}
+			}
+
+			break;
+
+		case VEND_REQUEST:
+			host->print("Controller: vend request for item: ");
+			host->print(last_item);
+			host->print(" , price: ");
+			host->println(last_price);
+
+			String contentType = "application/x-www-form-urlencoded";
+			String amount = (float) last_price / 100.0;
+			String postData = "amount=" + amount + "&number=" + last_item + "&balance=" + balance;
+
+			host->print("post data: ");
+			host->println(postData);
+
+			client.post("/protocoin/"+scannedCard+"/card_vend_request/", contentType, postData);
+
+			statusCode = client.responseStatusCode();
+			host->print("Controller: Status code: ");
+			host->println(statusCode);
+
+			if (statusCode == 200) {
+				host->println("Controller: vend request succeeded");
+				String response = client.responseBody();
+				host->println(response);
+
+				allowed_vend = VEND_OK;
+
+				controllerState = WAIT_FOR_SCAN;
+			} else {
+				host->println("Controller: vend request failed");
+
+				allowed_vend = VEND_BAD;
+
+				controllerState = WAIT_FOR_SCAN;
+			}
+
+			break;
 	}
 
 	return;
@@ -681,6 +770,11 @@ void loop()
 		else if (data == "cancel") {
 			host->println("sending cancel session request");
 			cashlessState = SEND_CANCELSESSION;
+		}
+		else if (data == "vend") {
+			host->println("setting fake vend request");
+			last_price = 150;
+			last_item = 0x0A02;
 		}
 		else if (controllerState == WAIT_FOR_SCAN && data) {
 			host->print("card scan: ");
