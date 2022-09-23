@@ -13,7 +13,7 @@
 
 const int led_pin = 13;
 
-HardwareSerial *peripheral = &Serial3;
+HardwareSerial *peripheral = &Serial2;
 HardwareSerial *sniff = &Serial1;
 usb_serial_class *host = &Serial;
 EthernetClient ethernet;
