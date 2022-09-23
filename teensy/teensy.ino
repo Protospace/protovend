@@ -1,10 +1,13 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include <Wire.h>
+#include <NativeEthernet.h>
+#include <ArduinoHttpClient.h>
 
 #include "mdb_defs.h"
 #include "mdb_parse.h"
 #include "mdb_cashless.h"
+
 
 
 const int led_pin = 13;
@@ -12,6 +15,15 @@ const int led_pin = 13;
 HardwareSerial *peripheral = &Serial3;
 HardwareSerial *sniff = &Serial1;
 usb_serial_class *host = &Serial;
+EthernetClient ethernet;
+HttpClient client = HttpClient(ethernet, "api.spaceport.dns.t0.vc", 443);
+
+uint8_t mac[6];
+void teensyMAC(uint8_t *mac) {
+	for(uint8_t by=0; by<2; by++) mac[by]=(HW_OCOTP_MAC1 >> ((1-by)*8)) & 0xFF;
+	for(uint8_t by=0; by<4; by++) mac[by+2]=(HW_OCOTP_MAC0 >> ((3-by)*8)) & 0xFF;
+	Serial.printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
 
 enum cashlessStates {
 	INACTIVE,
@@ -42,10 +54,22 @@ static const char* cashlessStateLabels[] =
 
 enum controllerStates {
 	BEGIN,
+	DELAY_CONNECT,
 	CONNECT,
-	WAITING,
+	CONNECTING,
+	HEARTBEAT,
+	HEARTBEAT_WAIT,
+	HEARTBEAT_SUCCESS,
+	WAIT_FOR_SCAN,
 	GET_BALANCE,
 };
+
+static const char* controllerStateLabels[] =
+{
+	"RESET",
+	"TEST_CONNECTION",
+};
+
 
 static struct mdb_cashless_config_response my_config = {
 	0x01,   // Feature level 1
@@ -61,7 +85,7 @@ static struct mdb_cashless_config_response my_config = {
 	//    supports refunds?
 };
 
-enum cashlessStates cashlessState = INACTIVE;
+enum cashlessStates cashlessState = SEND_ERROR;
 enum controllerStates controllerState = BEGIN;
 
 uint16_t available_funds = 0;
@@ -405,19 +429,12 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				host->println("Cashless: error");
 				tx[0] = MDB_RESPONSE_ERROR;
 				len = 1;
-
 				break;
 			}
 			else if (cmd == MDB_CMD_RESET) {
-				host->println("Cashless: Resetting reader");
-				tx[0] = MDB_ACK;
-				len = 0;
-
-				has_config = false;
-				has_prices = false;
-				available_funds = 0;
-
-				cashlessState = INACTIVE;
+				host->println("Cashless: ignoring reset command in error state");
+				tx[0] = MDB_RESPONSE_ERROR;
+				len = 1;
 				break;
 			}
 
@@ -453,6 +470,98 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 }
 
 
+String scannedCard = "";
+
+void processControllerState() {
+	static unsigned long timer = millis();
+	static int statusCode;
+
+
+	switch (controllerState) {
+		case BEGIN:
+			cashlessState = SEND_ERROR;
+			host->println("Controller: Initializing Ethernet with DHCP");
+
+			if (Ethernet.begin(mac) == 0) {
+				host->println("Controller: Failed connecting to Ethernet");
+			} else {
+				host->print("Controller: DHCP assigned IP: ");
+				host->println(Ethernet.localIP());
+				controllerState = DELAY_CONNECT;
+				timer = millis();
+			}
+			break;
+
+		case DELAY_CONNECT:
+			if (millis() > timer + 5000) {
+				controllerState = CONNECT;
+			}
+
+			break;
+
+		case CONNECT:
+			host->println("Controller: Connecting to portal");
+
+			ethernet.stop();
+			if (ethernet.connect("api.spaceport.dns.t0.vc", 443, true)) {
+				host->println("Controller: Connected.");
+				controllerState = HEARTBEAT;
+			} else {
+				host->println("Controller: Connection failed. Trying again...");
+				controllerState = CONNECT;
+			}
+
+			break;
+
+		case HEARTBEAT:
+			host->println("Controller: Testing connection to portal");
+
+			client.get("/stats/");
+
+			statusCode = client.responseStatusCode();
+			host->print("Controller: Status code: ");
+			host->println(statusCode);
+
+			if (statusCode == 200) {
+				host->println("Controller: connection succeeded");
+				String response = client.responseBody();
+				//host->println(response);
+				controllerState = WAIT_FOR_SCAN;
+			} else {
+				host->println("Controller: connection failed");
+				controllerState = BEGIN;
+			}
+
+			break;
+
+		case WAIT_FOR_SCAN:
+			break;
+
+		case GET_BALANCE:
+			host->print("Controller: getting balance for card: ");
+			host->println(scannedCard);
+
+			client.get("/protocoin/"+scannedCard+"/card_vend_balance/");
+
+			statusCode = client.responseStatusCode();
+			host->print("Controller: Status code: ");
+			host->println(statusCode);
+
+			if (statusCode == 200) {
+				host->println("Controller: get balance succeeded");
+				String response = client.responseBody();
+				host->println(response);
+				controllerState = WAIT_FOR_SCAN;
+			} else {
+				host->println("Controller: get balance failed");
+				controllerState = BEGIN;
+			}
+	}
+
+	return;
+}
+
+
 size_t tx(uint16_t data)
 {
     return peripheral->write9bit(data);
@@ -460,6 +569,9 @@ size_t tx(uint16_t data)
 
 void setup()
 {
+	teensyMAC(mac);
+	client.connectionKeepAlive();
+
     pinMode(led_pin, OUTPUT);
 
     host->begin(115200);
@@ -471,6 +583,8 @@ void setup()
     mdb_cashless_init(host, &mdb_cashless_handler);
 
     host->println("Host boot up");
+
+	delay(1000);
 }
 
 uint8_t current_addr = 0;
@@ -568,6 +682,12 @@ void loop()
 			host->println("sending cancel session request");
 			cashlessState = SEND_CANCELSESSION;
 		}
+		else if (controllerState == WAIT_FOR_SCAN && data) {
+			host->print("card scan: ");
+			host->println(data);
+			scannedCard = data;
+			controllerState = GET_BALANCE;
+		}
 		else if (cents) {
 			host->print("Cents: ");
 			host->println(cents);
@@ -575,5 +695,7 @@ void loop()
 			cashlessState = IDLE;
 		}
     }
+
+	processControllerState();
 
 }
