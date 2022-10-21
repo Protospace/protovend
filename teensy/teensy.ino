@@ -17,7 +17,6 @@ HardwareSerial *peripheral = &Serial2;
 HardwareSerial *sniff = &Serial1;
 usb_serial_class *host = &Serial;
 EthernetClient ethernet;
-HttpClient client = HttpClient(ethernet, "api.spaceport.dns.t0.vc", 443);
 
 uint8_t mac[6];
 void teensyMAC(uint8_t *mac) {
@@ -103,7 +102,9 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 
 	uint8_t len;
 
-    host->printf("Cashless: Command %02X:%02X in state %s\n", cmd, subcmd, cashlessStateLabels[cashlessState]);
+	if (cmd != MDB_CMD_POLL) {
+		host->printf("Cashless: Command %02X:%02X in state %s\n", cmd, subcmd, cashlessStateLabels[cashlessState]);
+	}
 
 	switch (cashlessState) {
 		case INACTIVE:
@@ -344,7 +345,6 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 					tx[1] = available_funds >> 8;
 					tx[2] = available_funds & 0xFF;
 					len = 3;
-					available_funds = 0;
 					break;
 				}
 				else {
@@ -453,6 +453,13 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				len = 1;
 				break;
 			}
+			// TODO: Arduino crashes if we don't handle config command. investigate why?
+			else if (cmd == MDB_CMD_SETUP && subcmd == MDB_CMD_SETUP_CONFIG) {
+				host->println("Cashless: ignoring config command in error state");
+				tx[0] = MDB_RESPONSE_ERROR;
+				len = 1;
+				break;
+			}
 
 			host->println("Cashless: Unexpected command in state SEND_ERROR");
 			break;
@@ -498,6 +505,8 @@ void processControllerState() {
 
 	static float balance;
 	static String first_name;
+
+	HttpClient client = HttpClient(ethernet, "api.spaceport.dns.t0.vc", 443);
 
 	switch (controllerState) {
 		case BEGIN:
@@ -552,7 +561,7 @@ void processControllerState() {
 				cashlessState = INACTIVE;
 			} else {
 				host->println("Controller: connection failed");
-				controllerState = BEGIN;
+				controllerState = CONNECT;
 			}
 
 			break;
@@ -585,10 +594,12 @@ void processControllerState() {
 				host->println(first_name);
 
 				available_funds = (uint16_t) (balance * 100);
+				allowed_vend = VEND_NULL;
 
 				host->print("Available funds: ");
 				host->println(available_funds);
 
+				cashlessState = IDLE;
 				controllerState = WAIT_FOR_VEND;
 			} else {
 				host->println("Controller: get balance failed");
@@ -600,6 +611,12 @@ void processControllerState() {
 		case WAIT_FOR_VEND:
 			if (last_price && last_item) {
 				if (last_price > available_funds) {
+					host->println("Controller: insufficient funds, denying vend");
+					host->print("last_price: ");
+					host->print(last_price);
+					host->print(", available_funds: ");
+					host->println(available_funds);
+
 					allowed_vend = VEND_BAD;
 					controllerState = WAIT_FOR_SCAN;
 				} else {
@@ -647,6 +664,8 @@ void processControllerState() {
 			break;
 	}
 
+	client.stop();
+
 	return;
 }
 
@@ -659,7 +678,6 @@ size_t tx(uint16_t data)
 void setup()
 {
 	teensyMAC(mac);
-	client.connectionKeepAlive();
 
     pinMode(led_pin, OUTPUT);
 
@@ -737,6 +755,13 @@ void loop()
 		}
 
     }
+
+	//if (sniff->available() > 0)
+	//{
+	//	incoming = sniff->read();
+	//	host->print("TO VMC:   ");
+	//	host->println(incoming, HEX);
+	//}
 
     if (host->available() > 0)
     {
