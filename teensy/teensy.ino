@@ -10,7 +10,24 @@
 #include "mdb_parse.h"
 #include "mdb_cashless.h"
 
+#define DHCP_TIMEOUT 20000
+#define VEND_TIMEOUT 20000
+#define HEARTBEAT_INTERVAL 1000 * 60 * 60  // hourly
 
+#define PROTOCOIN_SYMBOL 0
+
+byte protocoinSymbol[] = {
+	B01110,
+	B10101,
+	B11111,
+	B10100,
+	B11111,
+	B00101,
+	B11111,
+	B00100
+};
+
+void (* rebootArduino) (void) = 0;
 
 const int led_pin = 13;
 
@@ -60,6 +77,7 @@ enum controllerStates {
 	DELAY_CONNECT,
 	CONNECT,
 	HEARTBEAT,
+	INIT_WAIT_FOR_SCAN,
 	WAIT_FOR_SCAN,
 	GET_BALANCE,
 	WAIT_FOR_VEND,
@@ -379,6 +397,10 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				tx[0] = MDB_RESPONSE_ENDSESSION;
 				len = 1;
 
+				if (controllerState == WAIT_FOR_VEND) {
+					controllerState = INIT_WAIT_FOR_SCAN;
+				}
+
 				cashlessState = ENABLED;
 				break;
 			}
@@ -520,8 +542,15 @@ void processControllerState() {
 			lcd.home();
 			lcd.print("DHCP");
 
-			if (Ethernet.begin(mac) == 0) {
-				host->println("Controller: Failed connecting to Ethernet");
+			if (Ethernet.begin(mac, DHCP_TIMEOUT) == 0) {
+				host->println("Controller: Failed connecting to Ethernet. Resetting...");
+
+				lcd.clear();
+				lcd.home();
+				lcd.print("DHCP error");
+				delay(1000);
+
+				rebootArduino();
 			} else {
 				host->print("Controller: DHCP assigned IP: ");
 				host->println(Ethernet.localIP());
@@ -549,8 +578,14 @@ void processControllerState() {
 				host->println("Controller: Connected.");
 				controllerState = HEARTBEAT;
 			} else {
-				host->println("Controller: Connection failed. Trying again...");
-				controllerState = CONNECT;
+				host->println("Controller: Connection failed. Resetting...");
+
+				lcd.clear();
+				lcd.home();
+				lcd.print("Connect error");
+				delay(1000);
+
+				rebootArduino();
 			}
 
 			break;
@@ -560,7 +595,9 @@ void processControllerState() {
 
 			lcd.clear();
 			lcd.home();
-			lcd.print("Testing cxn...");
+			lcd.print("Testing");
+			lcd.setCursor(0, 1);
+			lcd.print("connection...");
 
 			client.get("/stats/");
 
@@ -571,22 +608,37 @@ void processControllerState() {
 			if (statusCode == 200) {
 				host->println("Controller: connection succeeded");
 
-				lcd.clear();
-				lcd.home();
-				lcd.print("SCAN YOUR CARD");
-
 				String response = client.responseBody();
 				//host->println(response);
-				controllerState = WAIT_FOR_SCAN;
+				controllerState = INIT_WAIT_FOR_SCAN;
 				cashlessState = INACTIVE;
 			} else {
-				host->println("Controller: connection failed");
-				controllerState = CONNECT;
+				host->println("Controller: Connection failed. Resetting...");
+
+				lcd.clear();
+				lcd.home();
+				lcd.print("Testing error");
+				delay(1000);
+
+				rebootArduino();
 			}
 
 			break;
 
+		case INIT_WAIT_FOR_SCAN:
+			lcd.clear();
+			lcd.home();
+			lcd.print("SCAN YOUR CARD");
+			controllerState = WAIT_FOR_SCAN;
+			timer = millis();
+
+			break;
+
 		case WAIT_FOR_SCAN:
+			if (millis() > timer + HEARTBEAT_INTERVAL) {
+				host->println("Controller: checking heartbeat");
+				controllerState = HEARTBEAT;
+			}
 			break;
 
 		case GET_BALANCE:
@@ -627,19 +679,33 @@ void processControllerState() {
 				lcd.home();
 				lcd.print(first_name);
 				lcd.setCursor(0, 1);
-				lcd.print("$");
+				lcd.write(PROTOCOIN_SYMBOL);
+				lcd.setCursor(1, 1);
 				lcd.print(balance);
 
 				cashlessState = IDLE;
 				controllerState = WAIT_FOR_VEND;
+				timer = millis();
 			} else {
-				host->println("Controller: get balance failed");
-				controllerState = BEGIN;
+				host->println("Controller: Get balance failed. Resetting...");
+
+				lcd.clear();
+				lcd.home();
+				lcd.print("Balance error");
+				delay(1000);
+
+				rebootArduino();
 			}
 
 			break;
 
 		case WAIT_FOR_VEND:
+			if (millis() > timer + VEND_TIMEOUT) {
+				host->println("Controller: vend timeout");
+				controllerState = INIT_WAIT_FOR_SCAN;
+				cashlessState = SEND_CANCELSESSION;
+			}
+
 			if (last_price && last_item) {
 				if (last_price > available_funds) {
 					host->println("Controller: insufficient funds, denying vend");
@@ -649,7 +715,7 @@ void processControllerState() {
 					host->println(available_funds);
 
 					allowed_vend = VEND_BAD;
-					controllerState = WAIT_FOR_SCAN;
+					controllerState = INIT_WAIT_FOR_SCAN;
 				} else {
 					controllerState = VEND_REQUEST;
 				}
@@ -683,13 +749,13 @@ void processControllerState() {
 
 				allowed_vend = VEND_OK;
 
-				controllerState = WAIT_FOR_SCAN;
+				controllerState = INIT_WAIT_FOR_SCAN;
 			} else {
 				host->println("Controller: vend request failed");
 
 				allowed_vend = VEND_BAD;
 
-				controllerState = WAIT_FOR_SCAN;
+				controllerState = INIT_WAIT_FOR_SCAN;
 			}
 
 			break;
@@ -725,6 +791,7 @@ void setup()
     host->println("Host boot up");
 
 	lcd.init();
+	lcd.createChar(PROTOCOIN_SYMBOL, protocoinSymbol);
 	lcd.backlight();
 	lcd.clear();
 	lcd.home();
@@ -806,13 +873,17 @@ void loop()
 	{
 		String data = rfid->readString();
 
-		host->print("Card scan: ");
+		host->print("RFID scan: ");
 		host->print(data);
 		host->print(", len: ");
 		host->println(data.length());
 
-		if (data.length() == 10) {
-			scannedCard = data;
+		if (controllerState == WAIT_FOR_SCAN && data[0] == 0x02 && data[13] == 0x03) {
+			scannedCard = data.substring(1, 11);
+
+			host->print("Card: ");
+			host->println(scannedCard);
+
 			controllerState = GET_BALANCE;
 		}
 	}
