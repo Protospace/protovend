@@ -4,6 +4,7 @@
 #include <NativeEthernet.h>
 #include <ArduinoHttpClient.h>
 #include <ArduinoJson.h>
+#include <LiquidCrystal_I2C.h>
 
 #include "mdb_defs.h"
 #include "mdb_parse.h"
@@ -13,10 +14,12 @@
 
 const int led_pin = 13;
 
+usb_serial_class *host = &Serial;
 HardwareSerial *peripheral = &Serial2;
 HardwareSerial *sniff = &Serial1;
-usb_serial_class *host = &Serial;
+HardwareSerial *rfid = &Serial7;
 EthernetClient ethernet;
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 uint8_t mac[6];
 void teensyMAC(uint8_t *mac) {
@@ -513,6 +516,10 @@ void processControllerState() {
 			cashlessState = SEND_ERROR;
 			host->println("Controller: Initializing Ethernet with DHCP");
 
+			lcd.clear();
+			lcd.home();
+			lcd.print("DHCP");
+
 			if (Ethernet.begin(mac) == 0) {
 				host->println("Controller: Failed connecting to Ethernet");
 			} else {
@@ -533,6 +540,10 @@ void processControllerState() {
 		case CONNECT:
 			host->println("Controller: Connecting to portal");
 
+			lcd.clear();
+			lcd.home();
+			lcd.print("Connecting");
+
 			ethernet.stop();
 			if (ethernet.connect("api.spaceport.dns.t0.vc", 443, true)) {
 				host->println("Controller: Connected.");
@@ -547,6 +558,10 @@ void processControllerState() {
 		case HEARTBEAT:
 			host->println("Controller: Testing connection to portal");
 
+			lcd.clear();
+			lcd.home();
+			lcd.print("Testing cxn...");
+
 			client.get("/stats/");
 
 			statusCode = client.responseStatusCode();
@@ -555,6 +570,11 @@ void processControllerState() {
 
 			if (statusCode == 200) {
 				host->println("Controller: connection succeeded");
+
+				lcd.clear();
+				lcd.home();
+				lcd.print("SCAN YOUR CARD");
+
 				String response = client.responseBody();
 				//host->println(response);
 				controllerState = WAIT_FOR_SCAN;
@@ -570,6 +590,10 @@ void processControllerState() {
 			break;
 
 		case GET_BALANCE:
+			lcd.clear();
+			lcd.home();
+			lcd.print("GETTING BALANCE");
+
 			host->print("Controller: getting balance for card: ");
 			host->println(scannedCard);
 
@@ -598,6 +622,13 @@ void processControllerState() {
 
 				host->print("Available funds: ");
 				host->println(available_funds);
+
+				lcd.clear();
+				lcd.home();
+				lcd.print(first_name);
+				lcd.setCursor(0, 1);
+				lcd.print("$");
+				lcd.print(balance);
 
 				cashlessState = IDLE;
 				controllerState = WAIT_FOR_VEND;
@@ -685,11 +716,19 @@ void setup()
     host->setTimeout(250);
     sniff->begin(9600, SERIAL_9N1);
     peripheral->begin(9600, SERIAL_9N1_RXINV_TXINV);
+    rfid->begin(9600);
+    rfid->setTimeout(50);
 
     mdb_parser_init(&tx, host);
     mdb_cashless_init(host, &mdb_cashless_handler);
 
     host->println("Host boot up");
+
+	lcd.init();
+	lcd.backlight();
+	lcd.clear();
+	lcd.home();
+	lcd.print("Booting up...");
 
 	delay(1000);
 }
@@ -762,6 +801,21 @@ void loop()
 	//	host->print("TO VMC:   ");
 	//	host->println(incoming, HEX);
 	//}
+
+	if (rfid->available() > 0)
+	{
+		String data = rfid->readString();
+
+		host->print("Card scan: ");
+		host->print(data);
+		host->print(", len: ");
+		host->println(data.length());
+
+		if (data.length() == 10) {
+			scannedCard = data;
+			controllerState = GET_BALANCE;
+		}
+	}
 
     if (host->available() > 0)
     {
