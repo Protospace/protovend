@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 #include <LiquidCrystal_I2C.h>
 
+#include "secrets.h"
 #include "mdb_defs.h"
 #include "mdb_parse.h"
 #include "mdb_cashless.h"
@@ -649,7 +650,10 @@ void processControllerState() {
 			host->print("Controller: getting balance for card: ");
 			host->println(scannedCard);
 
+			client.beginRequest();
 			client.get("/protocoin/"+scannedCard+"/card_vend_balance/");
+			client.sendHeader("Authorization", VEND_API_TOKEN);
+			client.endRequest();
 
 			statusCode = client.responseStatusCode();
 			host->print("Controller: Status code: ");
@@ -736,7 +740,14 @@ void processControllerState() {
 			host->print("post data: ");
 			host->println(postData);
 
-			client.post("/protocoin/"+scannedCard+"/card_vend_request/", contentType, postData);
+			client.beginRequest();
+			client.post("/protocoin/"+scannedCard+"/card_vend_request/");
+			client.sendHeader("Content-Type", contentType);
+			client.sendHeader("Content-Length", postData.length());
+			client.sendHeader("Authorization", VEND_API_TOKEN);
+			client.beginBody();
+			client.print(postData);
+			client.endRequest();
 
 			statusCode = client.responseStatusCode();
 			host->print("Controller: Status code: ");
