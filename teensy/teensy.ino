@@ -435,6 +435,20 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				cashlessState = IDLE;
 				break;
 			}
+			else if (cmd == MDB_CMD_RESET) {
+				host->println("Cashless: Resetting reader");
+				tx[0] = MDB_ACK;
+				len = 0;
+
+				has_config = false;
+				has_prices = false;
+				available_funds = 0;
+				last_price = 0;
+				last_item = 0;
+
+				cashlessState = INACTIVE;
+				break;
+			}
 			else if (cmd == MDB_CMD_POLL) {
 				if (allowed_vend == VEND_OK) {
 					allowed_vend = VEND_NULL;
@@ -532,7 +546,7 @@ void processControllerState() {
 	static float balance;
 	static String first_name;
 
-	HttpClient client = HttpClient(ethernet, "api.spaceport.dns.t0.vc", 443);
+	HttpClient client = HttpClient(ethernet, "portalproxy.dns.t0.vc", 80);
 
 	switch (controllerState) {
 		case BEGIN:
@@ -575,7 +589,7 @@ void processControllerState() {
 			lcd.print("Connecting");
 
 			ethernet.stop();
-			if (ethernet.connect("api.spaceport.dns.t0.vc", 443, true)) {
+			if (ethernet.connect("portalproxy.dns.t0.vc", 80, false)) {
 				host->println("Controller: Connected.");
 				controllerState = HEARTBEAT;
 			} else {
