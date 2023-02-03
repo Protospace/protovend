@@ -806,7 +806,7 @@ void setup()
     host->begin(115200);
     host->setTimeout(250);
     sniff->begin(9600, SERIAL_9N1);
-    peripheral->begin(9600, SERIAL_9N1_RXINV_TXINV);
+    peripheral->begin(9600, SERIAL_9N1_TXINV);
     rfid->begin(9600);
     rfid->setTimeout(50);
 
