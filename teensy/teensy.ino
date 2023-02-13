@@ -209,28 +209,28 @@ uint8_t mdb_cashless_handler(uint8_t* rx, uint8_t* tx, uint8_t cmd, uint8_t subc
 				cashlessState = INACTIVE;
 				break;
 			}
-			//else if (cmd == MDB_CMD_EXT && subcmd == MDB_CMD_EXT_REQUEST_ID) {
-			//	host->println("Cashless: Request ID");
+			else if (cmd == MDB_CMD_EXT && subcmd == MDB_CMD_EXT_REQUEST_ID) {
+				host->println("Cashless: Request ID");
 
-			//	char manufacturer[] = "WTF";
-			//	char serial[] = "10 digits?";
-			//	char model[] =  "SparkVend!!1";
-			//	uint16_t version = 0x0001;
+				char manufacturer[] = "WTF";
+				char serial[] = "10 digits?";
+				char model[] =  "SparkVend!!1";
+				uint16_t version = 0x0001;
 
-			//	tx[0] = MDB_RESPONSE_PERIPHERALID;
-			//	memcpy(tx +  1, manufacturer,  3);
-			//	memcpy(tx +  4, serial      , 10);
-			//	memcpy(tx + 14, model       , 12);
-			//	memcpy(tx + 28, &version    ,  2);
+				tx[0] = MDB_RESPONSE_PERIPHERALID;
+				memcpy(tx +  1, manufacturer,  3);
+				memcpy(tx +  4, serial      , 10);
+				memcpy(tx + 14, model       , 12);
+				memcpy(tx + 28, &version    ,  2);
 
-			//	memcpy(manufacturer, rx +  2,  3);
-			//	memcpy(serial      , rx +  5, 10);
-			//	memcpy(model       , rx + 15, 12);
-			//	memcpy(&version    , rx + 29,  2);
-			//	len = 30;
+				memcpy(manufacturer, rx +  2,  3);
+				memcpy(serial      , rx +  5, 10);
+				memcpy(model       , rx + 15, 12);
+				memcpy(&version    , rx + 29,  2);
+				len = 30;
 
-			//	break;
-			//}
+				break;
+			}
 			else if (cmd == MDB_CMD_POLL) {
 				tx[0] = MDB_ACK;
 				len = 0;
@@ -546,7 +546,7 @@ void processControllerState() {
 	static float balance;
 	static String first_name;
 
-	HttpClient client = HttpClient(ethernet, "portalproxy.dns.t0.vc", 80);
+	HttpClient client = HttpClient(ethernet, PROXY_URL, 80);
 
 	switch (controllerState) {
 		case BEGIN:
@@ -589,7 +589,7 @@ void processControllerState() {
 			lcd.print("Connecting");
 
 			ethernet.stop();
-			if (ethernet.connect("portalproxy.dns.t0.vc", 80, false)) {
+			if (ethernet.connect(PROXY_URL, 80, false)) {
 				host->println("Controller: Connected.");
 				controllerState = HEARTBEAT;
 			} else {
@@ -749,7 +749,7 @@ void processControllerState() {
 
 			String contentType = "application/x-www-form-urlencoded";
 			String amount = (float) last_price / 100.0;
-			String postData = "amount=" + amount + "&number=" + last_item + "&balance=" + balance;
+			String postData = "machine=" + String(MACHINE) + "&amount=" + amount + "&number=" + last_item + "&balance=" + balance;
 
 			host->print("post data: ");
 			host->println(postData);
