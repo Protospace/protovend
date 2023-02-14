@@ -690,6 +690,10 @@ void processControllerState() {
 				available_funds = (uint16_t) (balance * 100);
 				allowed_vend = VEND_NULL;
 
+				if (available_funds < 0) {
+					available_funds = 0;
+				}
+
 				host->print("Available funds: ");
 				host->println(available_funds);
 
